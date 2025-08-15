@@ -1,3 +1,5 @@
+// Contribuidor: Matias Galarza (Lobinux) — modificaciones en la gestión de directorios de usuario
+
 package steam
 
 import (
@@ -6,16 +8,6 @@ import (
 	"os"
 	"path"
 )
-
-// GetSteamDir will return the base steam config directory
-func GetBaseDir() (string, error) {
-	dirname, err := os.UserHomeDir()
-	if err != nil {
-		return dirname, err
-	}
-
-	return path.Join(dirname, ".steam", "steam"), nil
-}
 
 // GetSteamUserDir will return the steam userdata directory
 func GetUserDir() (string, error) {
