@@ -47,8 +47,25 @@ var addCmd = &cobra.Command{
 		exe := args[1]
 		var errors error
 
-		// Fetch all users
-		users, err := steam.GetUsers()
+		// Setup remote client if remote flags are set
+		if IsRemote() {
+			client, err := GetRemoteClient()
+			if err != nil {
+				ExitError(err, format)
+			}
+			defer CloseRemoteClient()
+			shortcut.SetRemoteClient(client)
+			steam.SetRemoteClient(client)
+		}
+
+		// Fetch all users (local or remote)
+		var users []string
+		var err error
+		if IsRemote() {
+			users, err = steam.GetRemoteUsers()
+		} else {
+			users, err = steam.GetUsers()
+		}
 		if err != nil {
 			ExitError(err, format)
 		}
@@ -58,14 +75,27 @@ var addCmd = &cobra.Command{
 
 		// Fetch all shortcuts
 		for _, user := range users {
-			if !steam.HasShortcuts(user) {
+			// Check if user has shortcuts (local or remote)
+			var hasShortcuts bool
+			if IsRemote() {
+				hasShortcuts = steam.RemoteHasShortcuts(user)
+			} else {
+				hasShortcuts = steam.HasShortcuts(user)
+			}
+			if !hasShortcuts {
 				continue
 			}
 			if onlyForUser != "all" && onlyForUser != user {
 				continue
 			}
 
-			shortcutsPath, _ := steam.GetShortcutsPath(user)
+			// Get shortcuts path (local or remote)
+			var shortcutsPath string
+			if IsRemote() {
+				shortcutsPath, _ = steam.GetRemoteShortcutsPath(user)
+			} else {
+				shortcutsPath, _ = steam.GetShortcutsPath(user)
+			}
 			shortcuts, err := shortcut.Load(shortcutsPath)
 			if err != nil {
 				ExitError(err, format)

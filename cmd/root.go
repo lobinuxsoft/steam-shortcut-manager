@@ -28,11 +28,61 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
 	"github.com/spf13/viper"
+
+	"github.com/shadowblip/steam-shortcut-manager/pkg/remote"
 )
 
 var cfgFile string
+
+// Remote connection settings
+var (
+	remoteHost     string
+	remotePort     int
+	remoteUser     string
+	remotePassword string
+	remoteKeyFile  string
+	remoteClient   *remote.Client
+)
+
+// IsRemote returns true if remote flags are set
+func IsRemote() bool {
+	return remoteHost != ""
+}
+
+// GetRemoteClient returns the remote client, connecting if necessary
+func GetRemoteClient() (*remote.Client, error) {
+	if remoteClient != nil {
+		return remoteClient, nil
+	}
+
+	if !IsRemote() {
+		return nil, nil
+	}
+
+	config := &remote.Config{
+		Host:     remoteHost,
+		Port:     remotePort,
+		User:     remoteUser,
+		Password: remotePassword,
+		KeyFile:  remoteKeyFile,
+	}
+
+	remoteClient = remote.NewClient(config)
+	if err := remoteClient.Connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to remote host: %w", err)
+	}
+
+	return remoteClient, nil
+}
+
+// CloseRemoteClient closes the remote connection if open
+func CloseRemoteClient() {
+	if remoteClient != nil {
+		remoteClient.Close()
+		remoteClient = nil
+	}
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -69,6 +119,13 @@ func init() {
 
 	rootCmd.PersistentFlags().StringP("output", "o", "term", "Output format (json, term)")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.steam-shortcut-manager.yaml)")
+
+	// Remote SSH connection flags
+	rootCmd.PersistentFlags().StringVar(&remoteHost, "remote-host", "", "Remote SSH host (e.g., 192.168.1.100 or user@host)")
+	rootCmd.PersistentFlags().IntVar(&remotePort, "remote-port", 22, "Remote SSH port")
+	rootCmd.PersistentFlags().StringVar(&remoteUser, "remote-user", "", "Remote SSH username (can also use user@host format)")
+	rootCmd.PersistentFlags().StringVar(&remotePassword, "remote-password", "", "Remote SSH password (prefer key-based auth)")
+	rootCmd.PersistentFlags().StringVar(&remoteKeyFile, "remote-key", "", "Path to SSH private key file")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

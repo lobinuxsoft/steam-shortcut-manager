@@ -5,13 +5,34 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/shadowblip/steam-shortcut-manager/pkg/remote"
 	"github.com/wakeful-cloud/vdf"
 )
 
-// Load the given shortcuts file
+// RemoteClient is set when operating in remote mode
+var RemoteClient *remote.Client
+
+// SetRemoteClient sets the remote client for remote operations
+func SetRemoteClient(client *remote.Client) {
+	RemoteClient = client
+}
+
+// IsRemote returns true if remote mode is enabled
+func IsRemote() bool {
+	return RemoteClient != nil
+}
+
+// Load the given shortcuts file (local or remote)
 func Load(file string) (*Shortcuts, error) {
-	// Read the VDF bytes
-	bytes, err := os.ReadFile(file)
+	var bytes []byte
+	var err error
+
+	// Read the VDF bytes (remote or local)
+	if IsRemote() {
+		bytes, err = RemoteClient.ReadFile(file)
+	} else {
+		bytes, err = os.ReadFile(file)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +59,7 @@ func Load(file string) (*Shortcuts, error) {
 	return &shortcuts, nil
 }
 
-// Save the given shortcuts file
+// Save the given shortcuts file (local or remote)
 func Save(shortcuts *Shortcuts, file string) error {
 	// Convert the struct to JSON so we can map it to a VDF map
 	rawJSON, err := json.Marshal(shortcuts)
@@ -59,8 +80,12 @@ func Save(shortcuts *Shortcuts, file string) error {
 		return fmt.Errorf("Unable to convert VDF to bytes: %v", err)
 	}
 
-	// Write the file
-	err = os.WriteFile(file, rawVdf, 0666)
+	// Write the file (remote or local)
+	if IsRemote() {
+		err = RemoteClient.WriteFile(file, rawVdf, 0666)
+	} else {
+		err = os.WriteFile(file, rawVdf, 0666)
+	}
 	if err != nil {
 		return fmt.Errorf("Unable to write VDF file: %v", err)
 	}
