@@ -75,16 +75,6 @@ var addCmd = &cobra.Command{
 
 		// Fetch all shortcuts
 		for _, user := range users {
-			// Check if user has shortcuts (local or remote)
-			var hasShortcuts bool
-			if IsRemote() {
-				hasShortcuts = steam.RemoteHasShortcuts(user)
-			} else {
-				hasShortcuts = steam.HasShortcuts(user)
-			}
-			if !hasShortcuts {
-				continue
-			}
 			if onlyForUser != "all" && onlyForUser != user {
 				continue
 			}
@@ -96,9 +86,26 @@ var addCmd = &cobra.Command{
 			} else {
 				shortcutsPath, _ = steam.GetShortcutsPath(user)
 			}
-			shortcuts, err := shortcut.Load(shortcutsPath)
-			if err != nil {
-				ExitError(err, format)
+
+			// Check if user has shortcuts (local or remote)
+			var hasShortcuts bool
+			if IsRemote() {
+				hasShortcuts = steam.RemoteHasShortcuts(user)
+			} else {
+				hasShortcuts = steam.HasShortcuts(user)
+			}
+
+			// Load existing shortcuts or create empty one
+			var shortcuts *shortcut.Shortcuts
+			if hasShortcuts {
+				shortcuts, err = shortcut.Load(shortcutsPath)
+				if err != nil {
+					ExitError(err, format)
+				}
+			} else {
+				// Create empty shortcuts structure
+				DebugPrintln("Creating new shortcuts file for user:", user)
+				shortcuts = shortcut.NewShortcuts()
 			}
 
 			// Generate a new shortcut from the cli flags
