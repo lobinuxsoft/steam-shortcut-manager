@@ -431,6 +431,13 @@ func init() {
 	applyCmd.Flags().IntP("app-id", "i", 0, "Steam App ID to apply images for (required)")
 	applyCmd.MarkFlagRequired("app-id")
 
+	// Direct URL flags for apply command (optional, bypasses SteamGridDB search)
+	applyCmd.Flags().String("grid-portrait", "", "Direct URL for portrait grid image (600x900)")
+	applyCmd.Flags().String("grid-landscape", "", "Direct URL for landscape grid image (920x430)")
+	applyCmd.Flags().String("hero", "", "Direct URL for hero image (1920x620)")
+	applyCmd.Flags().String("logo", "", "Direct URL for logo image")
+	applyCmd.Flags().String("icon", "", "Direct URL for icon image")
+
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// downloadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
@@ -438,31 +445,43 @@ func init() {
 
 // applyCmd applies artwork using Steam's CEF API (supports animated WebP/GIF)
 var applyCmd = &cobra.Command{
-	Use:   "apply --api-key=<key> --app-id=<id> <name>",
+	Use:   "apply --app-id=<id> [--api-key=<key> <name>] [--grid-portrait=<url>] [--hero=<url>] ...",
 	Short: "Apply SteamGridDB artwork via Steam API (supports animated WebP/GIF)",
 	Long: `Apply SteamGridDB artwork to a Steam shortcut using Steam's internal CEF API.
 This method supports animated WebP and GIF images, unlike the filesystem method.
 
 Can run locally on a device with Steam, or remotely via SSH.
 
+Two modes of operation:
+1. Search mode: Provide --api-key and game name to search SteamGridDB
+2. Direct URL mode: Provide image URLs directly (no API key needed)
+
 Examples:
-  # Run locally on device with Steam
+  # Search mode - search SteamGridDB by name
   steam-shortcut-manager steamgriddb apply --api-key=XXX --app-id=12345 "Hollow Knight"
 
-  # Run remotely via SSH
-  steam-shortcut-manager steamgriddb apply --api-key=XXX --app-id=12345 \
-      --remote-host=192.168.1.100 --remote-user=deck "Hollow Knight"`,
-	Args: cobra.ExactArgs(1),
+  # Direct URL mode - provide URLs directly
+  steam-shortcut-manager steamgriddb apply --app-id=12345 \
+      --grid-portrait="https://cdn2.steamgriddb.com/grid/xxx.webp" \
+      --hero="https://cdn2.steamgriddb.com/hero/xxx.png"
+
+  # Remote mode via SSH
+  steam-shortcut-manager steamgriddb apply --app-id=12345 \
+      --remote-host=192.168.1.100 --remote-user=deck \
+      --grid-portrait="https://..." --hero="https://..."`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		format := rootCmd.PersistentFlags().Lookup("output").Value.String()
-		gameName := args[0]
 
-		// Ensure we have a SteamGridDB API Key
-		apiKey, _ := cmd.Flags().GetString("api-key")
-		if apiKey == "" {
-			cmd.Help()
-			ExitError(fmt.Errorf("API key is required"), format)
-		}
+		// Get direct URL flags
+		gridPortrait, _ := cmd.Flags().GetString("grid-portrait")
+		gridLandscape, _ := cmd.Flags().GetString("grid-landscape")
+		hero, _ := cmd.Flags().GetString("hero")
+		logo, _ := cmd.Flags().GetString("logo")
+		icon, _ := cmd.Flags().GetString("icon")
+
+		// Check if we have any direct URLs
+		hasDirectURLs := gridPortrait != "" || gridLandscape != "" || hero != "" || logo != "" || icon != ""
 
 		// Setup remote client if remote flags are set
 		if IsRemote() {
@@ -483,25 +502,72 @@ Examples:
 			ExitError(fmt.Errorf("app-id is required"), format)
 		}
 
-		// Create SteamGridDB client and apply artwork
-		sgdbClient := steamgriddb.NewClient(apiKey)
+		if hasDirectURLs {
+			// Direct URL mode - use provided URLs
+			fmt.Println("Using direct URLs for artwork...")
+			artwork := &steam.ArtworkConfig{
+				GridPortrait:  gridPortrait,
+				GridLandscape: gridLandscape,
+				HeroImage:     hero,
+				LogoImage:     logo,
+				IconImage:     icon,
+			}
 
-		fmt.Printf("Searching SteamGridDB for '%s'...\n", gameName)
-		results, err := sgdbClient.Search(gameName)
-		if err != nil {
-			ExitError(err, format)
-		}
-		if len(results.Data) == 0 {
-			ExitError(fmt.Errorf("no games found for '%s'", gameName), format)
-		}
+			fmt.Printf("Applying artwork for AppID %d...\n", appID)
+			if gridPortrait != "" {
+				fmt.Printf("  Grid Portrait: %s\n", gridPortrait)
+			}
+			if gridLandscape != "" {
+				fmt.Printf("  Grid Landscape: %s\n", gridLandscape)
+			}
+			if hero != "" {
+				fmt.Printf("  Hero: %s\n", hero)
+			}
+			if logo != "" {
+				fmt.Printf("  Logo: %s\n", logo)
+			}
+			if icon != "" {
+				fmt.Printf("  Icon: %s\n", icon)
+			}
 
-		gameID := fmt.Sprintf("%d", results.Data[0].ID)
-		fmt.Printf("Found: %s (ID: %s)\n", results.Data[0].Name, gameID)
+			err := steam.SetArtwork(uint64(appID), artwork)
+			if err != nil {
+				ExitError(err, format)
+			}
+		} else {
+			// Search mode - need API key and game name
+			if len(args) == 0 {
+				cmd.Help()
+				ExitError(fmt.Errorf("game name is required when not using direct URLs"), format)
+			}
+			gameName := args[0]
 
-		fmt.Println("Fetching and applying artwork...")
-		err = sgdbClient.ApplyArtwork(gameID, uint64(appID))
-		if err != nil {
-			ExitError(err, format)
+			apiKey, _ := cmd.Flags().GetString("api-key")
+			if apiKey == "" {
+				cmd.Help()
+				ExitError(fmt.Errorf("API key is required when not using direct URLs"), format)
+			}
+
+			// Create SteamGridDB client and apply artwork
+			sgdbClient := steamgriddb.NewClient(apiKey)
+
+			fmt.Printf("Searching SteamGridDB for '%s'...\n", gameName)
+			results, err := sgdbClient.Search(gameName)
+			if err != nil {
+				ExitError(err, format)
+			}
+			if len(results.Data) == 0 {
+				ExitError(fmt.Errorf("no games found for '%s'", gameName), format)
+			}
+
+			gameID := fmt.Sprintf("%d", results.Data[0].ID)
+			fmt.Printf("Found: %s (ID: %s)\n", results.Data[0].Name, gameID)
+
+			fmt.Println("Fetching and applying artwork...")
+			err = sgdbClient.ApplyArtwork(gameID, uint64(appID))
+			if err != nil {
+				ExitError(err, format)
+			}
 		}
 
 		fmt.Println("Artwork applied successfully!")
