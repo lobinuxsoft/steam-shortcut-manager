@@ -419,6 +419,7 @@ func downloadChimeraImages(flags *pflag.FlagSet, client *steamgriddb.Client, pla
 
 func init() {
 	steamgriddbCmd.AddCommand(downloadCmd)
+	steamgriddbCmd.AddCommand(applyCmd)
 
 	// Here you will define your flags and configuration settings.
 
@@ -426,7 +427,83 @@ func init() {
 	// and all subcommands, e.g.:
 	downloadCmd.Flags().IntP("app-id", "i", 0, "Steam App ID to download images for")
 
+	// Apply command flags
+	applyCmd.Flags().IntP("app-id", "i", 0, "Steam App ID to apply images for (required)")
+	applyCmd.MarkFlagRequired("app-id")
+
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// downloadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+// applyCmd applies artwork using Steam's CEF API (supports animated WebP/GIF)
+var applyCmd = &cobra.Command{
+	Use:   "apply --api-key=<key> --app-id=<id> <name>",
+	Short: "Apply SteamGridDB artwork via Steam API (supports animated WebP/GIF)",
+	Long: `Apply SteamGridDB artwork to a Steam shortcut using Steam's internal CEF API.
+This method supports animated WebP and GIF images, unlike the filesystem method.
+
+Can run locally on a device with Steam, or remotely via SSH.
+
+Examples:
+  # Run locally on device with Steam
+  steam-shortcut-manager steamgriddb apply --api-key=XXX --app-id=12345 "Hollow Knight"
+
+  # Run remotely via SSH
+  steam-shortcut-manager steamgriddb apply --api-key=XXX --app-id=12345 \
+      --remote-host=192.168.1.100 --remote-user=deck "Hollow Knight"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		format := rootCmd.PersistentFlags().Lookup("output").Value.String()
+		gameName := args[0]
+
+		// Ensure we have a SteamGridDB API Key
+		apiKey, _ := cmd.Flags().GetString("api-key")
+		if apiKey == "" {
+			cmd.Help()
+			ExitError(fmt.Errorf("API key is required"), format)
+		}
+
+		// Setup remote client if remote flags are set
+		if IsRemote() {
+			client, err := GetRemoteClient()
+			if err != nil {
+				ExitError(err, format)
+			}
+			defer CloseRemoteClient()
+			steam.SetRemoteClient(client)
+			fmt.Println("Connected to remote device")
+		} else {
+			fmt.Println("Running in local mode")
+		}
+
+		// Get app ID
+		appID, _ := cmd.Flags().GetInt("app-id")
+		if appID == 0 {
+			ExitError(fmt.Errorf("app-id is required"), format)
+		}
+
+		// Create SteamGridDB client and apply artwork
+		sgdbClient := steamgriddb.NewClient(apiKey)
+
+		fmt.Printf("Searching SteamGridDB for '%s'...\n", gameName)
+		results, err := sgdbClient.Search(gameName)
+		if err != nil {
+			ExitError(err, format)
+		}
+		if len(results.Data) == 0 {
+			ExitError(fmt.Errorf("no games found for '%s'", gameName), format)
+		}
+
+		gameID := fmt.Sprintf("%d", results.Data[0].ID)
+		fmt.Printf("Found: %s (ID: %s)\n", results.Data[0].Name, gameID)
+
+		fmt.Println("Fetching and applying artwork...")
+		err = sgdbClient.ApplyArtwork(gameID, uint64(appID))
+		if err != nil {
+			ExitError(err, format)
+		}
+
+		fmt.Println("Artwork applied successfully!")
+	},
 }
