@@ -223,8 +223,22 @@ sys.exit(0 if success else 1)
 
 func checkAiohttpAvailable() bool {
 	output, err := runCommand("python3", "-c", "import aiohttp")
-	if err != nil {
-		return false
+	if err != nil || strings.Contains(output, "ModuleNotFoundError") || strings.Contains(output, "No module") {
+		// Try to install aiohttp automatically
+		fmt.Println("[INFO] aiohttp not found, attempting to install...")
+		installOutput, installErr := runCommand("pip", "install", "--user", "aiohttp")
+		if installErr != nil {
+			fmt.Printf("[WARNING] Failed to install aiohttp: %v\n", installErr)
+			fmt.Printf("[WARNING] Output: %s\n", installOutput)
+			return false
+		}
+		fmt.Println("[INFO] aiohttp installed successfully")
+
+		// Verify installation
+		output, err = runCommand("python3", "-c", "import aiohttp")
+		if err != nil {
+			return false
+		}
 	}
 	return !strings.Contains(output, "ModuleNotFoundError") && !strings.Contains(output, "No module")
 }
