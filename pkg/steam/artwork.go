@@ -222,25 +222,74 @@ sys.exit(0 if success else 1)
 // Helper functions that work both locally and remotely
 
 func checkAiohttpAvailable() bool {
-	output, err := runCommand("python3", "-c", "import aiohttp")
-	if err != nil || strings.Contains(output, "ModuleNotFoundError") || strings.Contains(output, "No module") {
-		// Try to install aiohttp automatically
-		fmt.Println("[INFO] aiohttp not found, attempting to install...")
-		installOutput, installErr := runCommand("pip", "install", "--user", "aiohttp")
-		if installErr != nil {
-			fmt.Printf("[WARNING] Failed to install aiohttp: %v\n", installErr)
-			fmt.Printf("[WARNING] Output: %s\n", installOutput)
-			return false
-		}
-		fmt.Println("[INFO] aiohttp installed successfully")
+	// First check if python3 is available
+	_, err := runCommand("python3", "--version")
+	if err != nil {
+		fmt.Println("[WARNING] python3 not found, cannot use Steam CEF API")
+		return false
+	}
 
-		// Verify installation
-		output, err = runCommand("python3", "-c", "import aiohttp")
-		if err != nil {
-			return false
-		}
+	// Check if aiohttp is already installed
+	output, err := runCommand("python3", "-c", "import aiohttp")
+	if err == nil && !strings.Contains(output, "ModuleNotFoundError") && !strings.Contains(output, "No module") {
+		return true
+	}
+
+	// aiohttp not found, try to install it
+	fmt.Println("[INFO] aiohttp not found, attempting to install...")
+
+	// Check if pip is available, try different methods
+	pipCmd := findPipCommand()
+	if pipCmd == "" {
+		fmt.Println("[WARNING] pip not found, cannot install aiohttp")
+		return false
+	}
+
+	// Install aiohttp
+	var installOutput string
+	var installErr error
+	if pipCmd == "python3 -m pip" {
+		installOutput, installErr = runCommand("python3", "-m", "pip", "install", "--user", "aiohttp")
+	} else {
+		installOutput, installErr = runCommand(pipCmd, "install", "--user", "aiohttp")
+	}
+
+	if installErr != nil {
+		fmt.Printf("[WARNING] Failed to install aiohttp: %v\n", installErr)
+		fmt.Printf("[WARNING] Output: %s\n", installOutput)
+		return false
+	}
+	fmt.Println("[INFO] aiohttp installed successfully")
+
+	// Verify installation
+	output, err = runCommand("python3", "-c", "import aiohttp")
+	if err != nil {
+		return false
 	}
 	return !strings.Contains(output, "ModuleNotFoundError") && !strings.Contains(output, "No module")
+}
+
+// findPipCommand finds the available pip command
+func findPipCommand() string {
+	// Try pip3 first
+	if output, err := runCommand("pip3", "--version"); err == nil && !strings.Contains(output, "not found") {
+		fmt.Println("[INFO] Using pip3")
+		return "pip3"
+	}
+
+	// Try pip
+	if output, err := runCommand("pip", "--version"); err == nil && !strings.Contains(output, "not found") {
+		fmt.Println("[INFO] Using pip")
+		return "pip"
+	}
+
+	// Try python3 -m pip
+	if output, err := runCommand("python3", "-m", "pip", "--version"); err == nil && !strings.Contains(output, "No module") {
+		fmt.Println("[INFO] Using python3 -m pip")
+		return "python3 -m pip"
+	}
+
+	return ""
 }
 
 func getGridPath() (string, error) {
