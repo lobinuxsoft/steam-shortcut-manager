@@ -2,24 +2,6 @@
 MIT License
 
 Copyright © 2022 William Edwards <shadowapex at gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 */
 package cmd
 
@@ -47,25 +29,8 @@ var addCmd = &cobra.Command{
 		exe := args[1]
 		var errors error
 
-		// Setup remote client if remote flags are set
-		if IsRemote() {
-			client, err := GetRemoteClient()
-			if err != nil {
-				ExitError(err, format)
-			}
-			defer CloseRemoteClient()
-			shortcut.SetRemoteClient(client)
-			steam.SetRemoteClient(client)
-		}
-
-		// Fetch all users (local or remote)
-		var users []string
-		var err error
-		if IsRemote() {
-			users, err = steam.GetRemoteUsers()
-		} else {
-			users, err = steam.GetUsers()
-		}
+		// Fetch all users
+		users, err := steam.GetUsers()
 		if err != nil {
 			ExitError(err, format)
 		}
@@ -79,21 +44,8 @@ var addCmd = &cobra.Command{
 				continue
 			}
 
-			// Get shortcuts path (local or remote)
-			var shortcutsPath string
-			if IsRemote() {
-				shortcutsPath, _ = steam.GetRemoteShortcutsPath(user)
-			} else {
-				shortcutsPath, _ = steam.GetShortcutsPath(user)
-			}
-
-			// Check if user has shortcuts (local or remote)
-			var hasShortcuts bool
-			if IsRemote() {
-				hasShortcuts = steam.RemoteHasShortcuts(user)
-			} else {
-				hasShortcuts = steam.HasShortcuts(user)
-			}
+			shortcutsPath, _ := steam.GetShortcutsPath(user)
+			hasShortcuts := steam.HasShortcuts(user)
 
 			// Load existing shortcuts or create empty one
 			var shortcuts *shortcut.Shortcuts

@@ -32,7 +32,6 @@ type ArtworkConfig struct {
 }
 
 // SetArtwork applies artwork for a Steam shortcut.
-// Works both locally and remotely (if RemoteClient is set).
 // Tries Steam's CEF API first (supports animated WebP/GIF), then falls back
 // to the filesystem method if the API is unavailable.
 func SetArtwork(appID uint64, artwork *ArtworkConfig) error {
@@ -66,7 +65,7 @@ func SetArtwork(appID uint64, artwork *ArtworkConfig) error {
 
 		if !success {
 			// Filesystem fallback
-			mkdirAll(gridPath)
+			os.MkdirAll(gridPath, 0755)
 			if err := uploadArtworkToGrid(url, gridPath, baseName); err != nil {
 				fmt.Printf("[ERROR] Failed to upload %s: %v\n", baseName, err)
 			}
@@ -86,7 +85,7 @@ func SetArtwork(appID uint64, artwork *ArtworkConfig) error {
 
 	// Icon only via filesystem (Steam API icon handling differs)
 	if artwork.IconImage != "" {
-		mkdirAll(gridPath)
+		os.MkdirAll(gridPath, 0755)
 		if err := uploadArtworkToGrid(artwork.IconImage, gridPath, fmt.Sprintf("%d_icon", appID)); err != nil {
 			fmt.Printf("[ERROR] Failed to upload icon: %v\n", err)
 		}
@@ -97,7 +96,7 @@ func SetArtwork(appID uint64, artwork *ArtworkConfig) error {
 
 // SetArtworkViaCEF applies artwork using Steam's internal CEF debugger API.
 // This method supports animated WebP/GIF images unlike the filesystem method.
-// Requires aiohttp Python module (works locally or remotely).
+// Requires aiohttp Python module.
 func SetArtworkViaCEF(appID uint64, imageURL string, assetType AssetType) error {
 	// Download the image
 	resp, err := http.Get(imageURL)
@@ -117,7 +116,7 @@ func SetArtworkViaCEF(appID uint64, imageURL string, assetType AssetType) error 
 
 	// Write image to temp file
 	imagePath := "/tmp/steam_artwork_temp.bin"
-	if err := writeFile(imagePath, data, 0644); err != nil {
+	if err := os.WriteFile(imagePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write temp image: %w", err)
 	}
 
@@ -198,40 +197,40 @@ sys.exit(0 if success else 1)
 
 	// Write and execute the Python script
 	scriptPath := "/tmp/steam_set_artwork.py"
-	if err := writeFile(scriptPath, []byte(pythonScript), 0755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(pythonScript), 0755); err != nil {
 		return fmt.Errorf("failed to write Python script: %w", err)
 	}
 
-	output, err := runCommand("python3", scriptPath)
+	cmd := exec.Command("python3", scriptPath)
+	output, err := cmd.CombinedOutput()
 
 	// Clean up temp files
-	removeFile(scriptPath)
-	removeFile(imagePath)
+	os.Remove(scriptPath)
+	os.Remove(imagePath)
 
 	if err != nil {
-		return fmt.Errorf("Steam CEF API failed: %w (output: %s)", err, output)
+		return fmt.Errorf("Steam CEF API failed: %w (output: %s)", err, string(output))
 	}
 
-	if strings.Contains(output, "ERROR") {
-		return fmt.Errorf("Steam CEF API error: %s", output)
+	if strings.Contains(string(output), "ERROR") {
+		return fmt.Errorf("Steam CEF API error: %s", string(output))
 	}
 
 	return nil
 }
 
-// Helper functions that work both locally and remotely
-
 func checkAiohttpAvailable() bool {
 	// First check if python3 is available
-	_, err := runCommand("python3", "--version")
-	if err != nil {
+	cmd := exec.Command("python3", "--version")
+	if err := cmd.Run(); err != nil {
 		fmt.Println("[WARNING] python3 not found, cannot use Steam CEF API")
 		return false
 	}
 
 	// Check if aiohttp is already installed
-	output, err := runCommand("python3", "-c", "import aiohttp")
-	if err == nil && !strings.Contains(output, "ModuleNotFoundError") && !strings.Contains(output, "No module") {
+	cmd = exec.Command("python3", "-c", "import aiohttp")
+	output, err := cmd.CombinedOutput()
+	if err == nil && !strings.Contains(string(output), "ModuleNotFoundError") && !strings.Contains(string(output), "No module") {
 		return true
 	}
 
@@ -246,45 +245,48 @@ func checkAiohttpAvailable() bool {
 	}
 
 	// Install aiohttp
-	var installOutput string
-	var installErr error
+	var installCmd *exec.Cmd
 	if pipCmd == "python3 -m pip" {
-		installOutput, installErr = runCommand("python3", "-m", "pip", "install", "--user", "aiohttp")
+		installCmd = exec.Command("python3", "-m", "pip", "install", "--user", "aiohttp")
 	} else {
-		installOutput, installErr = runCommand(pipCmd, "install", "--user", "aiohttp")
+		installCmd = exec.Command(pipCmd, "install", "--user", "aiohttp")
 	}
 
+	installOutput, installErr := installCmd.CombinedOutput()
 	if installErr != nil {
 		fmt.Printf("[WARNING] Failed to install aiohttp: %v\n", installErr)
-		fmt.Printf("[WARNING] Output: %s\n", installOutput)
+		fmt.Printf("[WARNING] Output: %s\n", string(installOutput))
 		return false
 	}
 	fmt.Println("[INFO] aiohttp installed successfully")
 
 	// Verify installation
-	output, err = runCommand("python3", "-c", "import aiohttp")
+	cmd = exec.Command("python3", "-c", "import aiohttp")
+	output, err = cmd.CombinedOutput()
 	if err != nil {
 		return false
 	}
-	return !strings.Contains(output, "ModuleNotFoundError") && !strings.Contains(output, "No module")
+	return !strings.Contains(string(output), "ModuleNotFoundError") && !strings.Contains(string(output), "No module")
 }
 
-// findPipCommand finds the available pip command
 func findPipCommand() string {
 	// Try pip3 first
-	if output, err := runCommand("pip3", "--version"); err == nil && !strings.Contains(output, "not found") {
+	cmd := exec.Command("pip3", "--version")
+	if output, err := cmd.CombinedOutput(); err == nil && !strings.Contains(string(output), "not found") {
 		fmt.Println("[INFO] Using pip3")
 		return "pip3"
 	}
 
 	// Try pip
-	if output, err := runCommand("pip", "--version"); err == nil && !strings.Contains(output, "not found") {
+	cmd = exec.Command("pip", "--version")
+	if output, err := cmd.CombinedOutput(); err == nil && !strings.Contains(string(output), "not found") {
 		fmt.Println("[INFO] Using pip")
 		return "pip"
 	}
 
 	// Try python3 -m pip
-	if output, err := runCommand("python3", "-m", "pip", "--version"); err == nil && !strings.Contains(output, "No module") {
+	cmd = exec.Command("python3", "-m", "pip", "--version")
+	if output, err := cmd.CombinedOutput(); err == nil && !strings.Contains(string(output), "No module") {
 		fmt.Println("[INFO] Using python3 -m pip")
 		return "python3 -m pip"
 	}
@@ -293,16 +295,6 @@ func findPipCommand() string {
 }
 
 func getGridPath() (string, error) {
-	if IsRemote() {
-		users, err := GetRemoteUsers()
-		if err != nil || len(users) == 0 {
-			return "", fmt.Errorf("no Steam users found")
-		}
-		userDir, _ := GetRemoteUserDir()
-		return path.Join(userDir, users[0], "config", "grid"), nil
-	}
-
-	// Local mode
 	users, err := GetUsers()
 	if err != nil || len(users) == 0 {
 		return "", fmt.Errorf("no Steam users found")
@@ -312,45 +304,6 @@ func getGridPath() (string, error) {
 		return "", err
 	}
 	return path.Join(userDir, users[0], "config", "grid"), nil
-}
-
-func mkdirAll(dir string) error {
-	if IsRemote() {
-		RemoteClient.RunCommand(fmt.Sprintf("mkdir -p '%s'", dir))
-		return nil
-	}
-	return os.MkdirAll(dir, 0755)
-}
-
-func writeFile(filePath string, data []byte, perm os.FileMode) error {
-	if IsRemote() {
-		return RemoteClient.WriteFile(filePath, data, perm)
-	}
-	return os.WriteFile(filePath, data, perm)
-}
-
-func removeFile(filePath string) error {
-	if IsRemote() {
-		RemoteClient.RunCommand(fmt.Sprintf("rm -f '%s'", filePath))
-		return nil
-	}
-	return os.Remove(filePath)
-}
-
-func runCommand(name string, args ...string) (string, error) {
-	if IsRemote() {
-		cmdStr := name
-		for _, arg := range args {
-			cmdStr += " " + arg
-		}
-		output, err := RemoteClient.RunCommand(cmdStr + " 2>&1")
-		return string(output), err
-	}
-
-	// Local execution
-	cmd := exec.Command(name, args...)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
 }
 
 // uploadArtworkToGrid downloads an image and saves it to the Steam grid folder
@@ -376,7 +329,7 @@ func uploadArtworkToGrid(url, gridPath, baseName string) error {
 
 	// Save to grid folder
 	destPath := path.Join(gridPath, baseName+ext)
-	return writeFile(destPath, data, 0644)
+	return os.WriteFile(destPath, data, 0644)
 }
 
 // getExtensionFromResponse determines file extension from HTTP response or URL

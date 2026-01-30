@@ -450,8 +450,6 @@ var applyCmd = &cobra.Command{
 	Long: `Apply SteamGridDB artwork to a Steam shortcut using Steam's internal CEF API.
 This method supports animated WebP and GIF images, unlike the filesystem method.
 
-Can run locally on a device with Steam, or remotely via SSH.
-
 Two modes of operation:
 1. Search mode: Provide --api-key and game name to search SteamGridDB
 2. Direct URL mode: Provide image URLs directly (no API key needed)
@@ -463,12 +461,7 @@ Examples:
   # Direct URL mode - provide URLs directly
   steam-shortcut-manager steamgriddb apply --app-id=12345 \
       --grid-portrait="https://cdn2.steamgriddb.com/grid/xxx.webp" \
-      --hero="https://cdn2.steamgriddb.com/hero/xxx.png"
-
-  # Remote mode via SSH
-  steam-shortcut-manager steamgriddb apply --app-id=12345 \
-      --remote-host=192.168.1.100 --remote-user=deck \
-      --grid-portrait="https://..." --hero="https://..."`,
+      --hero="https://cdn2.steamgriddb.com/hero/xxx.png"`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		format := rootCmd.PersistentFlags().Lookup("output").Value.String()
@@ -482,19 +475,6 @@ Examples:
 
 		// Check if we have any direct URLs
 		hasDirectURLs := gridPortrait != "" || gridLandscape != "" || hero != "" || logo != "" || icon != ""
-
-		// Setup remote client if remote flags are set
-		if IsRemote() {
-			client, err := GetRemoteClient()
-			if err != nil {
-				ExitError(err, format)
-			}
-			defer CloseRemoteClient()
-			steam.SetRemoteClient(client)
-			fmt.Println("Connected to remote device")
-		} else {
-			fmt.Println("Running in local mode")
-		}
 
 		// Get app ID
 		appID, _ := cmd.Flags().GetInt("app-id")

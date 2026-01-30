@@ -2,24 +2,6 @@
 MIT License
 
 Copyright © 2022 William Edwards <shadowapex at gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 */
 package cmd
 
@@ -42,25 +24,8 @@ var removeCmd = &cobra.Command{
 		name := args[0]
 		format := rootCmd.PersistentFlags().Lookup("output").Value.String()
 
-		// Setup remote client if remote flags are set
-		if IsRemote() {
-			client, err := GetRemoteClient()
-			if err != nil {
-				ExitError(err, format)
-			}
-			defer CloseRemoteClient()
-			shortcut.SetRemoteClient(client)
-			steam.SetRemoteClient(client)
-		}
-
-		// Fetch all users (local or remote)
-		var users []string
-		var err error
-		if IsRemote() {
-			users, err = steam.GetRemoteUsers()
-		} else {
-			users, err = steam.GetUsers()
-		}
+		// Fetch all users
+		users, err := steam.GetUsers()
 		if err != nil {
 			ExitError(err, format)
 		}
@@ -70,27 +35,14 @@ var removeCmd = &cobra.Command{
 
 		// Fetch all shortcuts
 		for _, user := range users {
-			// Check if user has shortcuts (local or remote)
-			var hasShortcuts bool
-			if IsRemote() {
-				hasShortcuts = steam.RemoteHasShortcuts(user)
-			} else {
-				hasShortcuts = steam.HasShortcuts(user)
-			}
-			if !hasShortcuts {
+			if !steam.HasShortcuts(user) {
 				continue
 			}
 			if onlyForUser != "all" && onlyForUser != user {
 				continue
 			}
 
-			// Get shortcuts path (local or remote)
-			var shortcutsPath string
-			if IsRemote() {
-				shortcutsPath, _ = steam.GetRemoteShortcutsPath(user)
-			} else {
-				shortcutsPath, _ = steam.GetShortcutsPath(user)
-			}
+			shortcutsPath, _ := steam.GetShortcutsPath(user)
 			shortcuts, err := shortcut.Load(shortcutsPath)
 			if err != nil {
 				ExitError(err, format)
@@ -172,14 +124,5 @@ func init() {
 	rootCmd.AddCommand(removeCmd)
 	chimeraCmd.AddCommand(chimeraRemoveCmd)
 
-	// Here you will define your flags and configuration settings.
 	removeCmd.Flags().String("user", "all", "Steam user ID to remove the shortcut for")
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// removeCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// removeCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

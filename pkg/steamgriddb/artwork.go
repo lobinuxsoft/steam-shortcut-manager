@@ -45,13 +45,7 @@ func (c *Client) FetchArtworkConfig(gameID string) (*steam.ArtworkConfig, error)
 }
 
 // ApplyArtwork fetches artwork from SteamGridDB and applies it to a Steam shortcut
-// using the Steam CEF API (supports animated WebP/GIF)
-// Requires steam.SetRemoteClient() to be called first
 func (c *Client) ApplyArtwork(gameID string, appID uint64) error {
-	if !steam.IsRemote() {
-		return fmt.Errorf("remote client not set, call steam.SetRemoteClient() first")
-	}
-
 	config, err := c.FetchArtworkConfig(gameID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch artwork config: %w", err)
